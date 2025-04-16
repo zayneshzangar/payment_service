@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package paymentpb;
+
+option go_package = "internal/paymentpb";
+
+service PaymentService {
+  rpc GeneratePaymentLink (PaymentRequest) returns (PaymentResponse);
+}
+
+message PaymentRequest {
+  int64 user_id = 1;
+  int64 order_id = 2;
+  double total_price = 3;
+}
+
+message PaymentResponse {
+  string payment_url = 1;
+}
+
+  

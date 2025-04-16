@@ -1,0 +1,49 @@
+#!/bin/bash
+
+source /home/zangar/Documents/payment_service/scripts/env.sh
+
+psql -U $ROOT_USER_PSQL -p $DB_PORT -h $DB_HOST \
+    -c "CREATE ROLE $USER_PAYMENT_SERVICE WITH PASSWORD '$PASSWORD_PAYMENT_SERVICE';"
+psql -U $ROOT_USER_PSQL -p $DB_PORT -h $DB_HOST \
+    -c "CREATE DATABASE $DB_PAYMENT_SERVICE;"
+psql -U $ROOT_USER_PSQL -p $DB_PORT -h $DB_HOST \
+    -c "ALTER ROLE $USER_PAYMENT_SERVICE WITH LOGIN;"
+psql -U $ROOT_USER_PSQL -p $DB_PORT -h $DB_HOST \
+    -c "GRANT ALL PRIVILEGES ON DATABASE $DB_PAYMENT_SERVICE TO $USER_PAYMENT_SERVICE;"
+psql -U $ROOT_USER_PSQL -p $DB_PORT -h $DB_HOST \
+    -c "GRANT pg_write_server_files TO $USER_PAYMENT_SERVICE;"
+psql -U $ROOT_USER_PSQL -p $DB_PORT -h $DB_HOST \
+    -c "GRANT pg_read_server_files TO $USER_PAYMENT_SERVICE;"
+psql -U $ROOT_USER_PSQL -p $DB_PORT -h $DB_HOST \
+    -c "GRANT CREATE ON SCHEMA public TO $USER_PAYMENT_SERVICE;"
+psql -U $ROOT_USER_PSQL -p $DB_PORT -h $DB_HOST \
+    -c "ALTER USER $USER_PAYMENT_SERVICE WITH SUPERUSER;"
+
+
+# Create a new database
+PGPASSWORD=$PASSWORD_PAYMENT_SERVICE psql -U $USER_PAYMENT_SERVICE -p $DB_PORT -h $DB_HOST \
+    -c "CREATE TABLE payments (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    order_id INT UNIQUE NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+);"
+
+PGPASSWORD=$PASSWORD_PAYMENT_SERVICE psql -U $USER_PAYMENT_SERVICE -p $DB_PORT -h $DB_HOST \
+    -c "CREATE TABLE cards (
+    id SERIAL PRIMARY KEY,
+    number VARCHAR(16) NOT NULL,
+    cvv VARCHAR(3) NOT NULL,
+    exp_date VARCHAR(5) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    balance DECIMAL(10,2) NOT NULL DEFAULT 0.00
+);"
+
+PGPASSWORD=$PASSWORD_PAYMENT_SERVICE psql -U $USER_PAYMENT_SERVICE -p $DB_PORT -h $DB_HOST \
+    -c "INSERT INTO cards (number, cvv, exp_date, name, balance) VALUES
+        ('4111111111111111', '123', '12/26', 'John Doe', 100000.00),
+        ('5555555555554444', '456', '11/27', 'Alice Smith', 200000.00),
+        ('3782822463100054', '789', '10/28', 'Bob Johnson', 300000.00),
+        ('6011000990139424', '321', '09/29', 'Charlie Brown', 150000.00),
+        ('3530111333300000', '654', '08/30', 'Emily Davis', 99999.99);"
