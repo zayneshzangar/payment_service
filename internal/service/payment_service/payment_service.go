@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"payment_service/internal/entity"
+	LocalKafka "payment_service/internal/kafka"
 	"payment_service/internal/repository"
 	"strings"
 	"time"
@@ -22,7 +23,7 @@ const (
 
 type paymentService struct {
 	repo     repository.PaymentRepository
-	producer *kafka.Producer
+	producer LocalKafka.KafkaProducer
 }
 
 func NewPaymentService(repo repository.PaymentRepository, kafkaBootstrapServers []string) (*paymentService, error) {
@@ -39,7 +40,7 @@ func NewPaymentService(repo repository.PaymentRepository, kafkaBootstrapServers 
 }
 
 func (s *paymentService) PaymentProcess(ctx context.Context, paymentID int64, req entity.PaymentRequest) error {
-	// ✅ Получаем `payment` из БД
+	// Получаем payment из БД
 	payment, err := s.repo.GetPayment(ctx, paymentID)
 	if err != nil {
 		return err
@@ -49,7 +50,7 @@ func (s *paymentService) PaymentProcess(ctx context.Context, paymentID int64, re
 		return errorAlreadyPaidFor
 	}
 
-	// ✅ Проверяем карту
+	// Проверяем карту
 	valid, err := s.repo.ValidateCard(ctx, req.CardNum, req.CVV, req.ExpDate, req.Name)
 	if err != nil {
 		return err
@@ -58,7 +59,7 @@ func (s *paymentService) PaymentProcess(ctx context.Context, paymentID int64, re
 		return errors.New("invalid card details")
 	}
 
-	// ✅ Проверяем баланс (используем `payment.Amount` из БД)
+	// Проверяем баланс
 	hasFunds, err := s.repo.CheckAndDeductBalance(ctx, req.CardNum, payment.Amount)
 	if err != nil {
 		return err
@@ -67,7 +68,7 @@ func (s *paymentService) PaymentProcess(ctx context.Context, paymentID int64, re
 		return errors.New("insufficient funds")
 	}
 
-	// ✅ Обновляем только статус, НЕ `amount`!
+	// Обновляем только статус
 	err = s.repo.UpdatePayment(ctx, &entity.Payment{
 		ID:     payment.ID,
 		Status: "paid",
@@ -76,7 +77,7 @@ func (s *paymentService) PaymentProcess(ctx context.Context, paymentID int64, re
 		return err
 	}
 
-	// ✅ (Опционально) Отправляем уведомление в Order Service
+	// Отправляем уведомление в Order Service
 	err = s.notifyOrderService(payment)
 	if err != nil {
 		return err
@@ -100,7 +101,7 @@ func (s *paymentService) notifyOrderService(payment *entity.Payment) error {
 	}
 
 	kafkamsg := &kafka.Message{
-		TopicPartition: kafka.TopicPartition{ // исправлено: TopicPartition вместо TopicPartitions
+		TopicPartition: kafka.TopicPartition{
 			Topic:     &topic,
 			Partition: kafka.PartitionAny,
 		},
@@ -123,7 +124,7 @@ func (s *paymentService) notifyOrderService(payment *entity.Payment) error {
 	switch ev := e.(type) {
 	case *kafka.Message:
 		return nil
-	case *kafka.Error:
+	case kafka.Error:
 		return ev
 	default:
 		return errorUnknownType
